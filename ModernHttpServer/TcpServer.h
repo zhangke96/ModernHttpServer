@@ -46,9 +46,9 @@ enum class EpollChangeOperation
 };
 class TcpServer;
 
-typedef OnConnectOperation (*OnConnectHandle_t)(Connection*);
-typedef void (*OnReadHandle_t)(Connection*, const char *, ssize_t);
-typedef std::deque<WriteMeta>(*OnCanWriteHandle_t)(Connection*);
+typedef OnConnectOperation (*OnConnectHandle_t)(const Connection*);
+typedef void (*OnReadHandle_t)(const Connection*, const char *, ssize_t);
+typedef std::deque<WriteMeta>(*OnCanWriteHandle_t)(const Connection*);
 typedef std::vector<std::pair<int, EpollChangeOperation>>(*OnChangeEpoll_t)();
 
 class TcpServer
@@ -56,7 +56,8 @@ class TcpServer
 public:
 	TcpServer() : serverFd(-1), epollFd(-1), 
 		readyForStart(false), onConnectHandler(nullptr),
-		onReadHandler(nullptr), onCanWriteHandler(nullptr), onChangeEpollHandler(nullptr) {}
+		onReadHandler(nullptr), onCanWriteHandler(nullptr), 
+		onChangeEpollHandler(nullptr), notifyFd(-1) {}
 
 	~TcpServer();
 
@@ -149,6 +150,22 @@ public:
 		}
 		return true;
 	}
+	bool setNotifyFd(int fd)
+	{
+		if (notifyFd != -1)
+		{
+			return false;
+		}
+		else
+		{
+			notifyFd = fd;
+			if (!setNoBlock(notifyFd))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
 
 	//bool closeConnection(); // 关闭某个连接
 	
@@ -203,6 +220,14 @@ public:
 			close(epollFd);
 			return false;
 		}
+		event.data.fd = notifyFd;
+		if (epoll_ctl(epollFd, EPOLL_CTL_ADD, notifyFd, &event) == -1)
+		{
+			recordError(__FILE__, __LINE__);
+			close(serverFd);
+			close(epollFd);
+			return false;
+		}
 		return true;
 	}
 	// bool stop(); // 不是很好实现，先不实现
@@ -240,7 +265,7 @@ public:
 				for (int i = 0; i < epollRet; ++i)
 				{
 					printEvent(toHandleEvents[i].data.fd, toHandleEvents[i].events);
-					if (toHandleEvents[i].data.fd == serverFd)
+					if (toHandleEvents[i].data.fd == serverFd)	// 监听的serverFd
 					{
 						if (toHandleEvents[i].events & EPOLLIN)
 						{
@@ -249,6 +274,13 @@ public:
 								recordError(__FILE__, __LINE__);
 								Log(logger, Logger::LOG_ERROR, errorString);
 							}
+						}
+					}
+					else if (toHandleEvents[i].data.fd == notifyFd)	// 调用者通知fd
+					{
+						if (toHandleEvents[i].events & EPOLLIN)
+						{
+
 						}
 					}
 					else
@@ -324,6 +356,7 @@ private:
 
 	int serverFd;
 	int epollFd;
+	int notifyFd;	// 调用者提供pipefd[0]给TcpServer用来监听调用者的主动活动，可以在epoll_wait阻塞时快速返回处理
 	bool readyForStart;
 	std::string errorString;
 	std::map<int, Connection> connections;
@@ -619,6 +652,11 @@ private:
 			}
 			return true;
 		}
+	}
+
+	void handleNotify()
+	{
+
 	}
 };
 

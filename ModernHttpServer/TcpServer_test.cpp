@@ -4,11 +4,12 @@
 #include "tool.h"
 #include <iostream>
 #include <list>
+#include <unistd.h>
 using namespace std;
 
-OnConnectOperation connectHandler(Connection*);
-void onReadHandler(Connection *, const char *, ssize_t);
-std::deque<WriteMeta> onCanWriteHandler(Connection *);
+OnConnectOperation connectHandler(const Connection * connection);
+void onReadHandler(const Connection *, const char *, ssize_t);
+std::deque<WriteMeta> onCanWriteHandler(const Connection *);
 std::list<std::pair<int, WriteMeta>> toWrite;
 std::vector<std::pair<int, EpollChangeOperation>> onChangeEpollHandler();
 std::vector < std::pair<int, EpollChangeOperation>> changes;
@@ -25,6 +26,13 @@ int main()
 	tcpServer.onNewData(onReadHandler);
 	tcpServer.onCanSendData(onCanWriteHandler);
 	tcpServer.onNeedChangeEpoll(onChangeEpollHandler);
+	int pipeFds[2];
+	if (pipe(pipeFds) == -1)
+	{
+		std::cout << "errro when create pipe" << std::endl;
+		exit(-1);
+	}
+	tcpServer.setNotifyFd(pipeFds[0]);
 	startResult = tcpServer.start();
 	if (!startResult)
 	{
@@ -37,11 +45,11 @@ int main()
 	tcpServer.runServer();
 }
 
-OnConnectOperation connectHandler(Connection*)
+OnConnectOperation connectHandler(const Connection * connection)
 {
 	return OnConnectOperation::ADD_READ;
 }
-void onReadHandler(Connection *connect, const char *buffer, ssize_t size)
+void onReadHandler(const Connection *connect, const char *buffer, ssize_t size)
 {
 	cout << std::string(buffer, size) << endl;
 	std::string temp = createOk("hello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\n");
@@ -52,7 +60,7 @@ void onReadHandler(Connection *connect, const char *buffer, ssize_t size)
 	changes.emplace_back(connect->fd, EpollChangeOperation::ADD_WRITE);
 	changes.emplace_back(connect->fd, EpollChangeOperation::CLOSE_IF_NO_WRITE);
 }
-std::deque<WriteMeta> onCanWriteHandler(Connection *connect) // 传递数据一定要new出来的
+std::deque<WriteMeta> onCanWriteHandler(const Connection *connect) // 传递数据一定要new出来的
 {
 	std::deque<WriteMeta> result;
 	for (auto index = toWrite.begin(); index != toWrite.end(); ++index)
