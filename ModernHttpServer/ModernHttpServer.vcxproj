@@ -93,6 +93,10 @@
     <ClCompile>
       <AdditionalOptions>-D TCP_SERVER_TEST %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
+    <Link />
+    <Link>
+      <LibraryDependencies>pthread</LibraryDependencies>
+    </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

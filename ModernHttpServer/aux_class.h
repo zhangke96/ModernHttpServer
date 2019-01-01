@@ -86,19 +86,19 @@ private:
 	}
 };
 
-class mutexWrap
+class MutexWrap
 {
 public:
-	mutexWrap()
+	MutexWrap()
 	{
 		pthread_mutex_init(&mutex, NULL);
 	}
-	~mutexWrap()
+	~MutexWrap()
 	{
 		pthread_mutex_destroy(&mutex);
 	}
-	mutexWrap(const mutexWrap&) = delete;
-	mutexWrap& operator=(const mutexWrap&) = delete;
+	MutexWrap(const MutexWrap&) = delete;
+	MutexWrap& operator=(const MutexWrap&) = delete;
 	int lock()
 	{
 		return pthread_mutex_lock(&mutex);
@@ -114,7 +114,7 @@ private:
 class AutoMutex
 {
 public:
-	explicit AutoMutex(mutexWrap &amutex) : mutex(amutex)
+	explicit AutoMutex(MutexWrap &amutex) : mutex(amutex)
 	{
 		mutex.lock();
 	}
@@ -125,7 +125,7 @@ public:
 	AutoMutex(const AutoMutex&) = delete;
 	AutoMutex& operator=(const AutoMutex&) = delete;
 private:
-	mutexWrap &mutex;
+	MutexWrap &mutex;
 };
 
 #endif // !AUX_CLASS

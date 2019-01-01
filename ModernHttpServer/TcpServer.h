@@ -16,6 +16,8 @@
 #include <sys/uio.h>
 #include <vector>
 #include <set>
+#include <thread>
+#include "aux_class.h"
 
 #define BUFFER_SIZE (80 * 1024)		// 每次读写的最大大小
 
@@ -56,8 +58,11 @@ class TcpServer
 public:
 	TcpServer() : serverFd(-1), epollFd(-1), 
 		readyForStart(false), onConnectHandler(nullptr),
-		onReadHandler(nullptr), onCanWriteHandler(nullptr), 
-		onChangeEpollHandler(nullptr), notifyFd(-1) {}
+		onReadHandler(nullptr)
+	{
+		pipeFds[0] = -1;
+		pipeFds[1] = -1;
+	}
 
 	~TcpServer();
 
@@ -126,47 +131,31 @@ public:
 	}
 	/*bool onWriteFail();
 	bool onReadFail(); */
-	bool onCanSendData(OnCanWriteHandle_t handler)	// 如果套接字允许write，TcpServer会调用获取指定fd的数据
-	{
-		if (onCanWriteHandler)
-		{
-			return false;
-		}
-		else
-		{
-			onCanWriteHandler = handler;
-		}
-		return true;
-	}
-	bool onNeedChangeEpoll(OnChangeEpoll_t handler)
-	{
-		if (onChangeEpollHandler)
-		{
-			return false;
-		}
-		else
-		{
-			onChangeEpollHandler = handler;
-		}
-		return true;
-	}
-	bool setNotifyFd(int fd)
-	{
-		if (notifyFd != -1)
-		{
-			return false;
-		}
-		else
-		{
-			notifyFd = fd;
-			if (!setNoBlock(notifyFd))
-			{
-				return false;
-			}
-		}
-		return true;
-	}
-
+	//bool onCanSendData(OnCanWriteHandle_t handler)	// 如果套接字允许write，TcpServer会调用获取指定fd的数据
+	//{
+	//	if (onCanWriteHandler)
+	//	{
+	//		return false;
+	//	}
+	//	else
+	//	{
+	//		onCanWriteHandler = handler;
+	//	}
+	//	return true;
+	//}
+	//bool onNeedChangeEpoll(OnChangeEpoll_t handler)
+	//{
+	//	if (onChangeEpollHandler)
+	//	{
+	//		return false;
+	//	}
+	//	else
+	//	{
+	//		onChangeEpollHandler = handler;
+	//	}
+	//	return true;
+	//}
+	
 	//bool closeConnection(); // 关闭某个连接
 	
 	bool start()
@@ -220,8 +209,33 @@ public:
 			close(epollFd);
 			return false;
 		}
-		event.data.fd = notifyFd;
-		if (epoll_ctl(epollFd, EPOLL_CTL_ADD, notifyFd, &event) == -1)
+		if (pipe(pipeFds) == -1)
+		{
+			recordError(__FILE__, __LINE__);
+			close(serverFd);
+			close(epollFd);
+			return false;
+		}
+		if (!setNoBlock(pipeFds[0]))
+		{
+			recordError(__FILE__, __LINE__);
+			close(serverFd);
+			close(epollFd);
+			close(pipeFds[0]);
+			close(pipeFds[1]);
+			return false;
+		}
+		if (!setNoBlock(pipeFds[1]))
+		{
+			recordError(__FILE__, __LINE__);
+			close(serverFd);
+			close(epollFd);
+			close(pipeFds[0]);
+			close(pipeFds[1]);
+			return false;
+		}
+		event.data.fd = pipeFds[0];
+		if (epoll_ctl(epollFd, EPOLL_CTL_ADD, pipeFds[0], &event) == -1)
 		{
 			recordError(__FILE__, __LINE__);
 			close(serverFd);
@@ -234,139 +248,71 @@ public:
 
 	void runServer()
 	{
-		struct epoll_event *toHandleEvents;
-		toHandleEvents = new struct epoll_event[1024];
-		assert(toHandleEvents);
-		for (; ;)
-		{
-			if (onChangeEpollHandler)
-			{
-				auto toHandle = onChangeEpollHandler();
-				for (auto c : toHandle)
-				{
-					if (c.second == EpollChangeOperation::ADD_WRITE)
-					{
-						addToWrite(c.first);
-					}
-					else if (c.second == EpollChangeOperation::CLOSE_IF_NO_WRITE)
-					{
-						closeWhenWriteFinish.insert(c.first);
-					}
-				}
-			}
-			int epollRet = epoll_wait(epollFd, toHandleEvents, 1024, -1);
-			if (epollRet < 0)
-			{
-				recordError(__FILE__, __LINE__);
-				Log(logger, Logger::LOG_ERROR, errorString);
-			}
-			else
-			{
-				for (int i = 0; i < epollRet; ++i)
-				{
-					printEvent(toHandleEvents[i].data.fd, toHandleEvents[i].events);
-					if (toHandleEvents[i].data.fd == serverFd)	// 监听的serverFd
-					{
-						if (toHandleEvents[i].events & EPOLLIN)
-						{
-							if (!acceptNewConnection())
-							{
-								recordError(__FILE__, __LINE__);
-								Log(logger, Logger::LOG_ERROR, errorString);
-							}
-						}
-					}
-					else if (toHandleEvents[i].data.fd == notifyFd)	// 调用者通知fd
-					{
-						if (toHandleEvents[i].events & EPOLLIN)
-						{
-
-						}
-					}
-					else
-					{
-						int fd = toHandleEvents[i].data.fd;
-						if (connections.find(fd) == connections.end())
-						{
-							Log(logger, Logger::LOG_ERROR, "fd not seen before");
-							continue;
-						}
-						if (toHandleEvents[i].events & EPOLLIN || toHandleEvents[i].events & EPOLLHUP)
-						{
-							// test
-							char *buffer = nullptr;
-							buffer = new char[80 * 1024];
-							ssize_t number = read(fd, buffer, BUFFER_SIZE);
-							if (number < 0)
-							{
-								if (errno == EAGAIN)
-								{
-									
-								}
-								else
-								{
-									recordError(__FILE__, __LINE__);
-									Log(logger, Logger::LOG_ERROR, errorString);
-								}
-								continue;
-							}
-							else if (number == 0) // 对端关闭了连接
-							{
-								closeConnection(fd);
-							}
-							else
-							{
-								if (onReadHandler)
-								{
-									auto c = connections[fd];
-									onReadHandler(&(connections[fd]), buffer, number);
-								}
-							}
-							delete[] buffer;
-						}
-						else if (toHandleEvents[i].events & EPOLLOUT)
-						{
-							// 首先回调用户提供的接口获取数据，然后在发送
-							if (onCanWriteHandler)
-							{
-								std::deque<WriteMeta> toWrite = onCanWriteHandler(&connections[fd]);
-								if (toWrite.size() > 0)
-								{
-									toWriteContents[fd].insert(toWriteContents[fd].end(), toWrite.begin(), toWrite.end());
-								}
-								if (!writeContent(fd))
-								{
-									recordError(__FILE__, __LINE__);
-									Log(logger, Logger::LOG_ERROR, errorString);
-								}
-							}
-						}
-					}
-				}
-			}
-		}
+		std::thread workThread(&TcpServer::daemonRun, this);
+		workThread.detach();
 	}
 	std::string getError() const
 	{
 		return errorString;
 	}
-
+	bool notifyCanWrite(int fd, const WriteMeta &toWrite)
+	{
+		AutoMutex m(mutex);
+		if (!isVaildConnection(fd))
+		{
+			return false;
+		}
+		toWriteTempStorage.emplace_back(fd, toWrite);
+		return writePipeToNotify('w');
+	}
+	bool notifyCanWrite(int fd, const std::deque<WriteMeta> &toWrite)
+	{
+		AutoMutex m(mutex);
+		if (!isVaildConnection(fd))
+		{
+			return false;
+		}
+		//toWriteTempStorage.emplace_back(fd, toWrite);
+		for (auto c : toWrite)
+		{
+			toWriteTempStorage.emplace_back(fd, c);
+		}
+		return writePipeToNotify('w');
+	}
+	bool notifyChangeEpoll(const std::vector<std::pair<int, EpollChangeOperation>> &changes)
+	{
+		AutoMutex m(mutex);
+		for (auto c : changes)
+		{
+			if (!isVaildConnection(c.first))
+			{
+				return false;
+			}
+		}
+		changesTempStorage.insert(changesTempStorage.end(), changes.begin(), changes.end());
+		return writePipeToNotify('c');
+	}
 private:
 	struct sockaddr_in address;
 
 	int serverFd;
 	int epollFd;
-	int notifyFd;	// 调用者提供pipefd[0]给TcpServer用来监听调用者的主动活动，可以在epoll_wait阻塞时快速返回处理
+		// 调用者提供pipefd[0]给TcpServer用来监听调用者的主动活动，可以在epoll_wait阻塞时快速返回处理
 	bool readyForStart;
 	std::string errorString;
 	std::map<int, Connection> connections;
 	std::map<int, std::deque<WriteMeta>> toWriteContents;
 	std::set<int> closeWhenWriteFinish;
+	std::deque<std::pair<int, WriteMeta>> toWriteTempStorage;
+	std::deque<std::pair<int, EpollChangeOperation>> changesTempStorage;
+	int pipeFds[2];
 
 	OnConnectHandle_t onConnectHandler;	// TcpServer accept新连接后会回调
 	OnReadHandle_t onReadHandler;		// TcpServer read到数据会回调
-	OnCanWriteHandle_t onCanWriteHandler;// TcpServer 发现套接字可以write会回调获取数据
-	OnChangeEpoll_t onChangeEpollHandler;
+	//OnCanWriteHandle_t onCanWriteHandler;// TcpServer 发现套接字可以write会回调获取数据
+	//OnChangeEpoll_t onChangeEpollHandler;
+
+	MutexWrap mutex;
 
 	void recordError(const char * filename, int lineNumber)
 	{
@@ -654,9 +600,207 @@ private:
 		}
 	}
 
+	void daemonRun()
+	{
+		struct epoll_event *toHandleEvents;
+		toHandleEvents = new struct epoll_event[1024];
+		assert(toHandleEvents);
+		for (; ;)
+		{
+			/*if (onChangeEpollHandler)
+			{
+				auto toHandle = onChangeEpollHandler();
+				for (auto c : toHandle)
+				{
+					if (c.second == EpollChangeOperation::ADD_WRITE)
+					{
+						addToWrite(c.first);
+					}
+					else if (c.second == EpollChangeOperation::CLOSE_IF_NO_WRITE)
+					{
+						closeWhenWriteFinish.insert(c.first);
+					}
+				}
+			}*/
+			int epollRet = epoll_wait(epollFd, toHandleEvents, 1024, -1);
+			if (epollRet < 0)
+			{
+				recordError(__FILE__, __LINE__);
+				Log(logger, Logger::LOG_ERROR, errorString);
+			}
+			else
+			{
+				for (int i = 0; i < epollRet; ++i)
+				{
+					printEvent(toHandleEvents[i].data.fd, toHandleEvents[i].events);
+					if (toHandleEvents[i].data.fd == serverFd)	// 监听的serverFd
+					{
+						if (toHandleEvents[i].events & EPOLLIN)
+						{
+							if (!acceptNewConnection())
+							{
+								recordError(__FILE__, __LINE__);
+								Log(logger, Logger::LOG_ERROR, errorString);
+							}
+						}
+					}
+					else if (toHandleEvents[i].data.fd == pipeFds[0])	// 调用者通知fd
+					{
+						if (toHandleEvents[i].events & EPOLLIN)
+						{
+							handleNotify();
+						}
+					}
+					else
+					{
+						int fd = toHandleEvents[i].data.fd;
+						if (connections.find(fd) == connections.end())
+						{
+							Log(logger, Logger::LOG_ERROR, "fd not seen before");
+							continue;
+						}
+						if (toHandleEvents[i].events & EPOLLIN || toHandleEvents[i].events & EPOLLHUP)
+						{
+							// test
+							char *buffer = nullptr;
+							buffer = new char[BUFFER_SIZE];
+							ssize_t number = read(fd, buffer, BUFFER_SIZE);
+							if (number < 0)
+							{
+								if (errno == EAGAIN)
+								{
+
+								}
+								else
+								{
+									recordError(__FILE__, __LINE__);
+									Log(logger, Logger::LOG_ERROR, errorString);
+								}
+								continue;
+							}
+							else if (number == 0) // 对端关闭了连接
+							{
+								closeConnection(fd);
+							}
+							else
+							{
+								if (onReadHandler)
+								{
+									auto c = connections[fd];
+									onReadHandler(&(connections[fd]), buffer, number);
+								}
+							}
+							delete[] buffer;
+						}
+						else if (toHandleEvents[i].events & EPOLLOUT)
+						{
+							// 首先回调用户提供的接口获取数据，然后在发送
+							/*if (onCanWriteHandler)
+							{
+								std::deque<WriteMeta> toWrite = onCanWriteHandler(&connections[fd]);
+								if (toWrite.size() > 0)
+								{
+									toWriteContents[fd].insert(toWriteContents[fd].end(), toWrite.begin(), toWrite.end());
+								}
+								if (!writeContent(fd))
+								{
+									recordError(__FILE__, __LINE__);
+									Log(logger, Logger::LOG_ERROR, errorString);
+								}
+							}*/
+							if (!writeContent(fd))
+							{
+								recordError(__FILE__, __LINE__);
+								Log(logger, Logger::LOG_ERROR, errorString);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 	void handleNotify()
 	{
-
+		for (; ;)
+		{
+			char commandStr[1];
+			int ret = -1;
+			if ((ret = read(pipeFds[0], commandStr, 1)) != 1)
+			{
+				if (ret == -1)
+				{
+					if (errno == EAGAIN)
+					{
+						
+					}
+					else
+					{
+						recordError(__FILE__, __LINE__);
+					}
+				}
+				break;
+			}
+			else
+			{
+				handleSpecifyNotify(commandStr[0]);
+			}
+		}
 	}
+	bool handleSpecifyNotify(char command)
+	{
+		switch (command)
+		{
+			case 'w':	// 有新的写请求
+			{
+				AutoMutex m(mutex);
+				//toWriteContents.insert(toWriteContents.end(), toWriteTempStorage)
+				for (auto c : toWriteTempStorage)
+				{
+					auto &writeDeque = toWriteContents[c.first];
+					writeDeque.push_back(c.second);
+				}
+				toWriteTempStorage.clear();
+			}
+			break;
+			case 'c':	// 有改变Epoll状态的请求
+			{
+				AutoMutex m(mutex);
+				for (auto c : changesTempStorage)
+				{
+					if (c.second == EpollChangeOperation::ADD_WRITE)
+					{
+						addToWrite(c.first);
+					}
+					else if (c.second == EpollChangeOperation::CLOSE_IF_NO_WRITE)
+					{
+						closeWhenWriteFinish.insert(c.first);
+					}
+				}
+				changesTempStorage.clear();
+			}
+			break;
+		}
+		return true;
+	}
+	bool writePipeToNotify(char command)
+	{
+		char commandStr[1];
+		commandStr[0] = command;
+		int ret = -1;
+		if ((ret = write(pipeFds[1], commandStr, 1)) != 1)
+		{
+			recordError(__FILE__, __LINE__);
+			return false;
+		}
+		else
+		{
+			return true;
+		}
+	}
+	bool isVaildConnection(int fd)
+	{
+		return connections.find(fd) != connections.end();
+	}
+	
 };
 
