@@ -1,0 +1,3 @@
+[submodule "ModernHttpServer/http-parser"]
+	path = ModernHttpServer/http-parser
+	url = https://github.com/nodejs/http-parser
