@@ -7,8 +7,8 @@
 #include <unistd.h>
 using namespace std;
 
-OnConnectOperation connectHandler(const Connection * connection);
-void onReadHandler(const Connection *, const char *, ssize_t);
+OnConnectOperation connectHandler(const Connection * connection, void *data);
+void onReadHandler(const Connection *, const char *, size_t, void *);
 //std::deque<WriteMeta> onCanWriteHandler(const Connection *);
 //std::list<std::pair<int, WriteMeta>> toWrite;
 //std::vector<std::pair<int, EpollChangeOperation>> onChangeEpollHandler();
@@ -39,11 +39,11 @@ int main()
 	sleep(1000);
 }
 
-OnConnectOperation connectHandler(const Connection * connection)
+OnConnectOperation connectHandler(const Connection * connection, void *)
 {
 	return OnConnectOperation::ADD_READ;
 }
-void onReadHandler(const Connection *connect, const char *buffer, ssize_t size)
+void onReadHandler(const Connection *connect, const char *buffer, size_t size, void *)
 {
 	cout << std::string(buffer, size) << endl;
 	std::string temp = createOk("hello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\nhello world\n");

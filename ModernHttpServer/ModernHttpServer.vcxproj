@@ -74,24 +74,38 @@
   <ImportGroup Label="Shared" />
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <RemoteCCompileToolExe>g++-7</RemoteCCompileToolExe>
+    <RemoteCppCompileToolExe>g++-7</RemoteCppCompileToolExe>
+  </PropertyGroup>
   <ItemGroup>
     <ClInclude Include="aux_class.h" />
+    <ClInclude Include="HttpCommon.h" />
+    <ClInclude Include="HttpConnection.h" />
+    <ClInclude Include="HttpRequestParser.h" />
     <ClInclude Include="HttpServer.h" />
+    <ClInclude Include="http_parser.h" />
     <ClInclude Include="log.h" />
+    <ClInclude Include="Tcp2HttpAdapter.h" />
     <ClInclude Include="TcpServer.h" />
     <ClInclude Include="tool.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="HttpConnection.cpp" />
+    <ClCompile Include="HttpRequestParser.cpp" />
     <ClCompile Include="HttpServer.cpp" />
+    <ClCompile Include="http_parser.c" />
     <ClCompile Include="log.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Tcp2HttpAdapter.cpp" />
     <ClCompile Include="TcpServer.cpp" />
     <ClCompile Include="TcpServer_test.cpp" />
     <ClCompile Include="tool.cpp" />
   </ItemGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalOptions>-D TCP_SERVER_TEST %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>-D ZK_MAIN %(AdditionalOptions)</AdditionalOptions>
+      <CppLanguageStandard>c++17</CppLanguageStandard>
     </ClCompile>
     <Link />
     <Link>

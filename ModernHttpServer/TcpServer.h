@@ -25,7 +25,9 @@ struct Connection
 {
 	int fd;
 	struct sockaddr_in address;
+	friend bool operator< (const Connection &lhs, const Connection &rhs);
 };
+
 struct WriteMeta // 记录要write的信息，有时间改成智能指针 todo
 {
 	const char *buffer;
@@ -34,6 +36,8 @@ struct WriteMeta // 记录要write的信息，有时间改成智能指针 todo
 	WriteMeta() : buffer(nullptr), totalLen(0), toWriteLen(0) {}
 	WriteMeta(const char *buf, int len) : buffer(buf), totalLen(len), toWriteLen(len) {}
 };
+
+WriteMeta string2WriteMeta(const std::string &str);
 enum class OnConnectOperation
 {
 	CLOSE_IT,
@@ -48,8 +52,8 @@ enum class EpollChangeOperation
 };
 class TcpServer;
 
-typedef OnConnectOperation (*OnConnectHandle_t)(const Connection*);
-typedef void (*OnReadHandle_t)(const Connection*, const char *, ssize_t);
+typedef OnConnectOperation (*OnConnectHandle_t)(const Connection*, void *);
+typedef void (*OnReadHandle_t)(const Connection*, const char *, size_t, void *);
 typedef std::deque<WriteMeta>(*OnCanWriteHandle_t)(const Connection*);
 typedef std::vector<std::pair<int, EpollChangeOperation>>(*OnChangeEpoll_t)();
 
@@ -58,7 +62,7 @@ class TcpServer
 public:
 	TcpServer() : serverFd(-1), epollFd(-1), 
 		readyForStart(false), onConnectHandler(nullptr),
-		onReadHandler(nullptr)
+		onReadHandler(nullptr), data(nullptr)
 	{
 		pipeFds[0] = -1;
 		pipeFds[1] = -1;
@@ -87,7 +91,10 @@ public:
 		readyForStart = true;
 		return true;
 	}
-
+	void setData(void *newData)
+	{
+		data = newData;
+	}
 	std::string getAddress() const
 	{
 		char buffer[INET_ADDRSTRLEN];
@@ -307,6 +314,7 @@ private:
 	std::deque<std::pair<int, EpollChangeOperation>> changesTempStorage;
 	int pipeFds[2];
 
+	void *data;
 	OnConnectHandle_t onConnectHandler;	// TcpServer accept新连接后会回调
 	OnReadHandle_t onReadHandler;		// TcpServer read到数据会回调
 	//OnCanWriteHandle_t onCanWriteHandler;// TcpServer 发现套接字可以write会回调获取数据
@@ -343,7 +351,7 @@ private:
 					Log(logger, Logger::LOG_ERROR, errorString);
 				}
 				connections[clfd] = { clfd, clientAddr };
-				switch (onConnectHandler(&connections[clfd]))
+				switch (onConnectHandler(&connections[clfd], data))
 				{
 					case OnConnectOperation::CLOSE_IT:
 					{
@@ -687,7 +695,7 @@ private:
 								if (onReadHandler)
 								{
 									auto c = connections[fd];
-									onReadHandler(&(connections[fd]), buffer, number);
+									onReadHandler(&(connections[fd]), buffer, number, data);
 								}
 							}
 							delete[] buffer;
