@@ -3,6 +3,7 @@
 
 #include "HttpServer.h"
 std::string test(HttpInfo);
+std::string retIP(HttpInfo);
 
 int main()
 {
@@ -12,6 +13,7 @@ int main()
 	httpServer.setPort(80)*/;
 
 	httpServer.addUrlHandler("/", test);
+	httpServer.addUrlHandler("/IP/", retIP);
 	httpServer.addUrlRetStaticStr("/hello/", "hello world");
 	httpServer.addUrlAutoDirSearch("/source/", "/var/www/html/");
 	httpServer.addUrlSingleFile("/about/", "about.txt");
@@ -22,5 +24,10 @@ int main()
 std::string test(HttpInfo info)
 {
 	return info.url;
+}
+
+std::string retIP(HttpInfo info)
+{
+	return inet_ntoa(info.connection.address.sin_addr);
 }
 #endif // ZK_MAIN

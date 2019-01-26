@@ -19,6 +19,7 @@ typedef std::string(*urlHandler_t)(void *); // todo ²¹³äº¯Êý²ÎÊý
 
 struct HttpInfo
 {
+	Connection connection;
 	std::string url;
 	std::map<std::string, std::string> headers;
 };
@@ -151,11 +152,13 @@ public:
 						if (handler.type == HttpHandlerType::IllegalHandler)
 						{
 							// 404
-
+							WriteMeta toWrite = string2WriteMeta(createNotFound());
+							adapter.addConnectionWrite(&newTcpData.connection, &toWrite);
 						}
 						else if (handler.type == HttpHandlerType::NormalHandler)
 						{
 							HttpInfo info;
+							info.connection = newTcpData.connection;
 							info.url = url;
 							info.headers = HttpConnections[newTcpData.connection].getHeaders();
 							std::string result = reinterpret_cast<NormalHandler_t>(handler.handler)(info);

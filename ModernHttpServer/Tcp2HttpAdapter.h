@@ -18,6 +18,7 @@ public:
 		tcpServer.setData(this);
 		tcpServer.onConnect(onConnectHandler);
 		tcpServer.onNewData(onReadHandler);
+		tcpServer.onShutdown(onPeerShutdownHandler);
 	}
 	~Tcp2HttpAdapter()
 	{
@@ -63,8 +64,14 @@ public:
 	{
 		tcpServer.notifyCanWrite(conn->fd, *toWrite);
 	}
+
+	void addConnectionShutdownEvent(const Connection *conn)
+	{
+		tcpServer.notifyChangeEpoll({ {conn->fd, EpollChangeOperation::CLOSE_IT} });
+	}
 	static OnConnectOperation onConnectHandler(const Connection *, void *);
 	static void onReadHandler(const Connection *, const char *, size_t, void *);
+	static void onPeerShutdownHandler(const Connection *, void *);
 private:
 	TcpServer &tcpServer;
 	std::deque<HttpEvent> events;
