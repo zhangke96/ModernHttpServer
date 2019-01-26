@@ -15,7 +15,7 @@ typedef std::string(*urlHandler_t)(void *); // todo 补充函数参数
 
 // 考虑HttpServer和TcpServer之间加一个broker，TcpServer只要专注于读写
 #include "HttpConnection.h"
-#include "log.h"
+#include "TcpServer/TcpServer/log.h"
 
 struct HttpInfo
 {

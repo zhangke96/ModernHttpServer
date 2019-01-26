@@ -79,28 +79,28 @@
     <RemoteCppCompileToolExe>g++-7</RemoteCppCompileToolExe>
   </PropertyGroup>
   <ItemGroup>
-    <ClInclude Include="aux_class.h" />
     <ClInclude Include="http-parser\http_parser.h" />
     <ClInclude Include="HttpCommon.h" />
     <ClInclude Include="HttpConnection.h" />
     <ClInclude Include="HttpRequestParser.h" />
     <ClInclude Include="HttpServer.h" />
-    <ClInclude Include="log.h" />
     <ClInclude Include="Tcp2HttpAdapter.h" />
-    <ClInclude Include="TcpServer.h" />
-    <ClInclude Include="tool.h" />
+    <ClInclude Include="TcpServer\TcpServer\aux_class.h" />
+    <ClInclude Include="TcpServer\TcpServer\log.h" />
+    <ClInclude Include="TcpServer\TcpServer\TcpServer.h" />
+    <ClInclude Include="TcpServer\TcpServer\tool.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="http-parser\http_parser.c" />
     <ClCompile Include="HttpConnection.cpp" />
     <ClCompile Include="HttpRequestParser.cpp" />
     <ClCompile Include="HttpServer.cpp" />
-    <ClCompile Include="log.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Tcp2HttpAdapter.cpp" />
-    <ClCompile Include="TcpServer.cpp" />
-    <ClCompile Include="TcpServer_test.cpp" />
-    <ClCompile Include="tool.cpp" />
+    <ClCompile Include="TcpServer\TcpServer\log.cpp" />
+    <ClCompile Include="TcpServer\TcpServer\TcpServer.cpp" />
+    <ClCompile Include="TcpServer\TcpServer\TcpServer_test.cpp" />
+    <ClCompile Include="TcpServer\TcpServer\tool.cpp" />
   </ItemGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
