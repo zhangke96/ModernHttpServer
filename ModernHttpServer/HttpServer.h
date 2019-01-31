@@ -3,6 +3,7 @@
 #include <string>
 #include <sstream>
 #include "Tcp2HttpAdapter.h"
+#include "FileStream.h"
 
 typedef std::string(*urlHandler_t)(void *); // todo 补充函数参数
 
@@ -16,6 +17,7 @@ typedef std::string(*urlHandler_t)(void *); // todo 补充函数参数
 // 考虑HttpServer和TcpServer之间加一个broker，TcpServer只要专注于读写
 #include "HttpConnection.h"
 #include "TcpServer/TcpServer/log.h"
+#include "HttpResponseGenerator.h"
 
 struct HttpInfo
 {
@@ -46,11 +48,11 @@ struct HttpHandler
 	std::string str;
 	HttpHandler() : type(HttpHandlerType::IllegalHandler), handler(nullptr) {}
 };
-//struct HttpUrlLevel
-//{
-//	std::map<std::string, HttpHandler> handlers;
-//	HttpUrlLevel *nextLevel;
-//};
+struct HttpUrlLevel
+{
+	HttpHandler thisHandler;
+	std::map<std::string, HttpUrlLevel*> nextLevelHandler;
+};
 //struct HttpUrlLevel
 //{
 //	HttpHandler handler;
@@ -70,28 +72,28 @@ public:
 		HttpHandler newHandler;
 		newHandler.handler = (void *)handler;
 		newHandler.type = HttpHandlerType::NormalHandler;
-		return addUrl(url, newHandler);
+		return addUrlHandlerToTree(url, newHandler);
 	}
 	bool addUrlRetStaticStr(const std::string &url, const std::string &staticResult) 
 	{ 
 		HttpHandler newHandler;
 		newHandler.str = staticResult;
 		newHandler.type = HttpHandlerType::StaticStrHandler;
-		return addUrl(url, newHandler);
+		return addUrlHandlerToTree(url, newHandler);
 	}
 	bool addUrlAutoDirSearch(const std::string &url, const std::string &dir) 
 	{ 
 		HttpHandler newHandler;
 		newHandler.str = dir;
 		newHandler.type = HttpHandlerType::AutoDirSearchHandler;
-		return addUrl(url, newHandler);
+		return addUrlHandlerToTree(url, newHandler);
 	}
 	bool addUrlSingleFile(const std::string &url, const std::string &fileName) 
 	{ 
 		HttpHandler newHandler;
 		newHandler.str = fileName;
 		newHandler.type = HttpHandlerType::SingleFileHandler;
-		return addUrl(url, newHandler);
+		return addUrlHandlerToTree(url, newHandler);
 	}
 
 	bool set404Page(const std::string &page) 
@@ -148,12 +150,19 @@ public:
 					{
 						// 可以开始处理了
 						std::string url = HttpConnections[newTcpData.connection].getUrl();
-						HttpHandler handler = getUrlHandler(url);
+						auto handlerFilename = findUrlHandler(url);
+						HttpHandler handler = handlerFilename.first;
 						if (handler.type == HttpHandlerType::IllegalHandler)
 						{
 							// 404
-							WriteMeta toWrite = string2WriteMeta(createNotFound());
+							HttpResponseGenerator responseGenerator;
+							responseGenerator.setResponseCode(404);
+							responseGenerator.setKeepAlive(false);
+							responseGenerator.setLengthInd(str404.length());
+							WriteMeta toWrite = string2WriteMeta(responseGenerator.getResponseHead());
 							adapter.addConnectionWrite(&newTcpData.connection, &toWrite);
+							WriteMeta toWrite2 = string2WriteMeta(responseGenerator.getResponseBody(str404));
+							adapter.addConnectionWrite(&newTcpData.connection, &toWrite2);
 						}
 						else if (handler.type == HttpHandlerType::NormalHandler)
 						{
@@ -162,13 +171,57 @@ public:
 							info.url = url;
 							info.headers = HttpConnections[newTcpData.connection].getHeaders();
 							std::string result = reinterpret_cast<NormalHandler_t>(handler.handler)(info);
-							std::string responseStr = generateResponse(200, result);
-							WriteMeta toWrite = string2WriteMeta(responseStr);
+							//std::string responseStr = generateResponse(200, result);
+							HttpResponseGenerator responseGenerator;
+							responseGenerator.setResponseCode(200);
+							responseGenerator.setKeepAlive(true);
+							responseGenerator.setLengthInd(0, true);
+							WriteMeta toWrite = string2WriteMeta(responseGenerator.getResponseHead());
 							adapter.addConnectionWrite(&newTcpData.connection, &toWrite);
+							WriteMeta toWrite2 = string2WriteMeta(responseGenerator.getResponseBody(result, true));
+							adapter.addConnectionWrite(&newTcpData.connection, &toWrite2);
 						}
-						else if (handler.type == HttpHandlerType::StaticStrHandler)
+						else if (handler.type == HttpHandlerType::AutoDirSearchHandler)
 						{
-
+							FileStream stream(handler.str, handlerFilename.second);
+							if (stream.ifError())
+							{
+								if (stream.getErrorCode() == FileStream::FileStreamError::NotExist)
+								{
+									HttpResponseGenerator responseGenerator;
+									responseGenerator.setResponseCode(404);
+									responseGenerator.setKeepAlive(false);
+									responseGenerator.setLengthInd(str404.length());
+									WriteMeta toWrite = string2WriteMeta(responseGenerator.getResponseHead());
+									adapter.addConnectionWrite(&newTcpData.connection, &toWrite);
+									WriteMeta toWrite2 = string2WriteMeta(str404);
+									adapter.addConnectionWrite(&newTcpData.connection, &toWrite2);
+								}
+								else if (stream.getErrorCode() == FileStream::FileStreamError::Forbidden)
+								{
+									HttpResponseGenerator responseGenerator;
+									responseGenerator.setResponseCode(403);
+									responseGenerator.setKeepAlive(false);
+									std::string str403("403 Forbidden");
+									responseGenerator.setLengthInd(str403.length());
+									WriteMeta toWrite = string2WriteMeta(responseGenerator.getResponseHead());
+									adapter.addConnectionWrite(&newTcpData.connection, &toWrite);
+									WriteMeta toWrite2 = string2WriteMeta(str403);
+									adapter.addConnectionWrite(&newTcpData.connection, &toWrite2);
+								}
+							}
+							else
+							{
+								HttpResponseGenerator responseGenerator;
+								responseGenerator.setLengthInd(0, true);
+								WriteMeta toWrite = string2WriteMeta(responseGenerator.getResponseHead());
+								adapter.addConnectionWrite(&newTcpData.connection, &toWrite);
+								char buffer[4096];
+								ssize_t length = stream.read(buffer, 4096);
+								buffer[length] = '\0';
+								WriteMeta toWrite2 = string2WriteMeta(responseGenerator.getResponseBody(buffer, true));
+								adapter.addConnectionWrite(&newTcpData.connection, &toWrite2);
+							}
 						}
 						adapter.addConnectionWriteEvent(&newTcpData.connection);
 						adapter.addConnectionCloseEvent(&newTcpData.connection);
@@ -176,6 +229,11 @@ public:
 					}
 				}
 				delete[] newTcpData.data;
+				delete event.data;
+			}
+			else if (event.event == HttpEventType::PeerShutdown)
+			{
+				HttpConnections.erase(*(Connection*)(event.data));
 				delete event.data;
 			}
 		}
@@ -189,18 +247,10 @@ private:
 	std::map<Connection, HttpConnection> HttpConnections;
 	std::map<std::string, HttpHandler> HttpHandlers;
 	std::string str404;
-	std::vector<std::string> splitUrl(const std::string &url) const
-	{
-		std::istringstream is(url);
-		std::string word;
-		std::vector<std::string> result;
-		while (std::getline(is, word, '/'))
-		{
-			result.push_back(word);
-		}
-		return result;
-	}
-	bool addUrl(const std::string &url, HttpHandler handler)
+	HttpUrlLevel urlHandlesTree;
+	//std::deque<std::pair<Connection, CharStream>> workDeque;
+	std::vector<std::string> splitUrl(const std::string &url) const;
+	/*bool addUrl(const std::string &url, HttpHandler handler)
 	{
 		if (HttpHandlers.find(url) != HttpHandlers.end())
 		{
@@ -221,7 +271,7 @@ private:
 		{
 			return HttpHandlers[url];
 		}
-	}
+	}*/
 	std::string generateResponse(int statusCode, const std::string &body)
 	{
 		time_t nowTime = time(NULL);
@@ -238,12 +288,35 @@ private:
 		response.append(body);
 		return response;
 	}
-	/*bool addUrlHandlerToTree(const std::string &url, HttpHandler handler)
+	bool addUrlHandlerToTree(const std::string &url, HttpHandler handler)
 	{
 		auto levelUrlResult = splitUrl(url);
-		int i = 0;
-		HttpUrlLevel *urlTreeNode = &urlHandlesTree;
-		while (levelUrlResult[i] != "" && i < levelUrlResult.size())
+		if (levelUrlResult.size() == 0 || levelUrlResult[0] != "")
+		{
+			return false;
+		}
+		HttpUrlLevel *index = &urlHandlesTree;
+		int i = 1;
+		while (i < levelUrlResult.size())
+		{
+			auto &nextLevelHandlerMap = index->nextLevelHandler;
+			if (nextLevelHandlerMap.find(levelUrlResult[i]) == nextLevelHandlerMap.cend())
+			{
+				nextLevelHandlerMap.insert({ levelUrlResult[i], new HttpUrlLevel() });
+			}
+			index = nextLevelHandlerMap[levelUrlResult[i]];
+			++i;
+		}
+		if (index->thisHandler.type == HttpHandlerType::IllegalHandler)
+		{
+			index->thisHandler = handler;
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+		/*while (levelUrlResult[i] != "" && i < levelUrlResult.size())
 		{
 			if (urlTreeNode->nextLevel.find(levelUrlResult[i]) == urlTreeNode->nextLevel.end())
 			{
@@ -260,34 +333,48 @@ private:
 		else
 		{
 			return false;
-		}
+		}*/
 	}
-	HttpHandler findUrlHandler(const std::string &url)
+	// 如果是AutoDirSearchHandler，第二个返回值是文件名
+	std::pair<HttpHandler, std::string> findUrlHandler(const std::string &url)
 	{
 		auto levelUrlResult = splitUrl(url);
-		int i = 0;
-		HttpUrlLevel *urlTreeNode = &urlHandlesTree;
-		while (levelUrlResult[i] != "" && i < levelUrlResult.size())
+		if (levelUrlResult.size() == 0 || levelUrlResult[0] != "")
 		{
-			if (urlTreeNode->nextLevel.find(levelUrlResult[i]) == urlTreeNode->nextLevel.end())
+			return { HttpHandler(), "" };
+		}
+		HttpUrlLevel *index = &urlHandlesTree;
+		int i = 1;
+		while (i < levelUrlResult.size())
+		{
+			auto &nextLevelHandlerMap = index->nextLevelHandler;
+			if (nextLevelHandlerMap.find(levelUrlResult[i]) == nextLevelHandlerMap.cend())	// 下一层没有注册了
 			{
-				break;
+				if (index->thisHandler.type == HttpHandlerType::AutoDirSearchHandler)	// 文件夹搜索，匹配到前缀
+				{
+					std::string filename = "";
+					for (; i < levelUrlResult.size(); ++i)
+					{
+						filename.append(levelUrlResult[i]);
+						if (i < levelUrlResult.size() - 1)
+						{
+							filename.append("/");
+						}
+					}
+					return { index->thisHandler, filename };
+				}
+				else
+				{
+					return { HttpHandler(), "" };
+				}
 			}
 			else
 			{
-				urlTreeNode = &(urlTreeNode->nextLevel[levelUrlResult[i]]);
+				index = nextLevelHandlerMap[levelUrlResult[i]];	// 向下一层
 			}
 			++i;
 		}
-		HttpHandler getHandler;
-		if (urlTreeNode->nextLevel.find(levelUrlResult[i]) == urlTreeNode->nextLevel.end())
-		{
-			return getHandler;
-		}
-		else
-		{
-			return 
-		}
+		return { index->thisHandler, "" };
 	}
-	*/
+	
 };

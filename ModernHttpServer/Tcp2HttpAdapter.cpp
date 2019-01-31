@@ -26,6 +26,10 @@ void Tcp2HttpAdapter::onReadHandler(const Connection *connection, const char *da
 void Tcp2HttpAdapter::onPeerShutdownHandler(const Connection *connection, void *arg)
 {
 	Tcp2HttpAdapter *adapter = static_cast<Tcp2HttpAdapter *>(arg);
-	// 现在直接静默回复关闭
+	// 现在直接静默回复关闭，并且告诉上层
+	HttpEvent newEvent;
+	newEvent.event = HttpEventType::PeerShutdown;
+	newEvent.data = new Connection(*connection);
+	adapter->postEvent(newEvent);
 	adapter->addConnectionShutdownEvent(connection);
 }

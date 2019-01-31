@@ -39,15 +39,45 @@ public:
 	}
 	HttpEvent getEvent(bool isBlock = true) // HttpServer 获取新的数据，比如连接，接收到的数据
 	{
-		pthread_mutex_lock(&protectEventMutex);
-		while (events.empty())
+		if (isBlock)
 		{
-			pthread_cond_wait(&eventsConditon, &protectEventMutex);
+			pthread_mutex_lock(&protectEventMutex);
+			while (events.empty())
+			{
+				pthread_cond_wait(&eventsConditon, &protectEventMutex);
+			}
+			HttpEvent event = events.front();
+			events.pop_front();
+			pthread_mutex_unlock(&protectEventMutex);
+			return event;
 		}
-		HttpEvent event = events.front();
-		events.pop_front();
-		pthread_mutex_unlock(&protectEventMutex);
-		return event;
+		else
+		{
+			int error;
+			HttpEvent event{ HttpEventType::NoEvent, nullptr };
+			if ((error = pthread_mutex_trylock(&protectEventMutex)) != 0)
+			{
+				if (error == EBUSY)
+				{
+
+				}
+				else
+				{
+					Log(logger, Logger::LOG_ERROR, "error when trylock");
+				}
+
+			}
+			else
+			{
+				if (events.empty() != 0)
+				{
+					event = events.front();
+					events.pop_front();
+					pthread_mutex_unlock(&protectEventMutex);
+				}
+			}
+			return event;
+		}
 	}
 
 	void addConnectionWriteEvent(const Connection *conn)

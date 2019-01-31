@@ -79,10 +79,12 @@
     <RemoteCppCompileToolExe>g++-7</RemoteCppCompileToolExe>
   </PropertyGroup>
   <ItemGroup>
+    <ClInclude Include="FileStream.h" />
     <ClInclude Include="http-parser\http_parser.h" />
     <ClInclude Include="HttpCommon.h" />
     <ClInclude Include="HttpConnection.h" />
     <ClInclude Include="HttpRequestParser.h" />
+    <ClInclude Include="HttpResponseGenerator.h" />
     <ClInclude Include="HttpServer.h" />
     <ClInclude Include="Tcp2HttpAdapter.h" />
     <ClInclude Include="TcpServer\TcpServer\aux_class.h" />
@@ -91,9 +93,12 @@
     <ClInclude Include="TcpServer\TcpServer\tool.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="FileStream.cpp" />
     <ClCompile Include="http-parser\http_parser.c" />
+    <ClCompile Include="HttpCommon.cpp" />
     <ClCompile Include="HttpConnection.cpp" />
     <ClCompile Include="HttpRequestParser.cpp" />
+    <ClCompile Include="HttpResponseGenerator.cpp" />
     <ClCompile Include="HttpServer.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Tcp2HttpAdapter.cpp" />

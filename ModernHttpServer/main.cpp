@@ -15,7 +15,7 @@ int main()
 	httpServer.addUrlHandler("/", test);
 	httpServer.addUrlHandler("/IP/", retIP);
 	httpServer.addUrlRetStaticStr("/hello/", "hello world");
-	httpServer.addUrlAutoDirSearch("/source/", "/var/www/html/");
+	httpServer.addUrlAutoDirSearch("/source/", "/home/zhangke/");
 	httpServer.addUrlSingleFile("/about/", "about.txt");
 
 	httpServer.set404Page("404 Not found");
