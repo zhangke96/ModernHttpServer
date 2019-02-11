@@ -33,3 +33,12 @@ void Tcp2HttpAdapter::onPeerShutdownHandler(const Connection *connection, void *
 	adapter->postEvent(newEvent);
 	adapter->addConnectionShutdownEvent(connection);
 }
+
+void Tcp2HttpAdapter::onCanWriteHandler(const Connection *connection, void *arg)
+{
+	Tcp2HttpAdapter *adapter = static_cast<Tcp2HttpAdapter *>(arg);
+	HttpEvent newEvent;
+	newEvent.event = HttpEventType::CanWrite;
+	newEvent.data = new Connection(*connection);
+	adapter->postEvent(newEvent);
+}

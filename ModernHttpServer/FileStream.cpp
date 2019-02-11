@@ -1,9 +1,5 @@
 #include "FileStream.h"
 
-FileStream::~FileStream()
-{
-}
-
 void FileStream::initialize()
 {
 	int dirfd = open(dir.c_str(), O_RDONLY);
@@ -21,11 +17,11 @@ void FileStream::initialize()
 		{
 			specificErrorCode = FileStreamError::SomeError;
 		}
-		fd = -1;
+		fd.reset(-1);
 		return;
 	}
-	fd = openat(dirfd, filename.c_str(), O_RDONLY);
-	if (fd == -1)
+	fd.reset(openat(dirfd, filename.c_str(), O_RDONLY));
+	if (fd.getfd() == -1)
 	{
 		if (errno == ENONET)
 		{
@@ -44,9 +40,9 @@ void FileStream::initialize()
 
 ssize_t FileStream::read(char *buffer, size_t size)
 {
-	if (fd == -1)
+	if (fd.getfd() == -1)
 	{
 		return -1;
 	}
-	return ::read(fd, buffer, size);
+	return fd.read(buffer, size);
 }
