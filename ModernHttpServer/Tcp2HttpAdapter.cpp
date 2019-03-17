@@ -1,17 +1,17 @@
 #include "Tcp2HttpAdapter.h"
 
-OnConnectOperation Tcp2HttpAdapter::onConnectHandler(const Connection *connection, void *arg)
+OnConnectOperation Tcp2HttpAdapter::onConnectHandler(const TcpConnection *connection, void *arg)
 {
 	Tcp2HttpAdapter *adapter = static_cast<Tcp2HttpAdapter *>(arg);
 	HttpEvent newEvent;
 	newEvent.event = HttpEventType::NewConnection;
-	Connection *conn = new Connection(*connection);
+	TcpConnection *conn = new TcpConnection(*connection);
 	newEvent.data = (void *)conn;
 	adapter->postEvent(newEvent);
 	return OnConnectOperation::ADD_READ;
 }
 
-void Tcp2HttpAdapter::onReadHandler(const Connection *connection, const char *data, size_t size, void *arg)
+void Tcp2HttpAdapter::onReadHandler(const TcpConnection *connection, const char *data, size_t size, void *arg)
 {
 	Tcp2HttpAdapter *adapter = static_cast<Tcp2HttpAdapter *>(arg);
 	HttpEvent newEvent;
@@ -23,13 +23,13 @@ void Tcp2HttpAdapter::onReadHandler(const Connection *connection, const char *da
 	adapter->postEvent(newEvent);
 }
 
-void Tcp2HttpAdapter::onPeerShutdownHandler(const Connection *connection, void *arg)
+void Tcp2HttpAdapter::onPeerShutdownHandler(const TcpConnection *connection, void *arg)
 {
 	Tcp2HttpAdapter *adapter = static_cast<Tcp2HttpAdapter *>(arg);
 	// 现在直接静默回复关闭，并且告诉上层
 	HttpEvent newEvent;
 	newEvent.event = HttpEventType::PeerShutdown;
-	newEvent.data = new Connection(*connection);
+	newEvent.data = new TcpConnection(*connection);
 	adapter->postEvent(newEvent);
 	adapter->addConnectionShutdownEvent(connection);
 }

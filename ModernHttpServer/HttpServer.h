@@ -21,7 +21,7 @@ typedef std::string(*urlHandler_t)(void *); // todo 补充函数参数
 
 struct HttpInfo
 {
-	Connection connection;
+	TcpConnection connection;
 	std::string url;
 	std::map<std::string, std::string> headers;
 };
@@ -53,11 +53,7 @@ struct HttpUrlLevel
 	HttpHandler thisHandler;
 	std::map<std::string, HttpUrlLevel*> nextLevelHandler;
 };
-//struct HttpUrlLevel
-//{
-//	HttpHandler handler;
-//	std::map<std::string, HttpUrlLevel> nextLevel;
-//};
+
 class HttpServer
 {
 public:
@@ -115,11 +111,11 @@ public:
 			HttpEvent event = adapter.getEvent();
 			if (event.event == HttpEventType::NewConnection)
 			{
-				Connection newConnection = *((Connection *)(event.data));
+				TcpConnection newConnection = *((TcpConnection *)(event.data));
 				delete event.data;
 				if (HttpConnections.find(newConnection) != HttpConnections.end())
 				{
-					Log(logger, Logger::LOG_ERROR, "Dup Connection");
+					Log(logger, Logger::LOG_ERROR, "Dup TcpConnection");
 				}
 				else
 				{
@@ -132,7 +128,7 @@ public:
 				TcpData newTcpData = *((TcpData *)(event.data));
 				if (HttpConnections.find(newTcpData.connection) == HttpConnections.end())
 				{
-					Log(logger, Logger::LOG_ERROR, "Not exist Connection");
+					Log(logger, Logger::LOG_ERROR, "Not exist TcpConnection");
 				}
 				else
 				{
@@ -233,7 +229,7 @@ public:
 			}
 			else if (event.event == HttpEventType::PeerShutdown)
 			{
-				HttpConnections.erase(*(Connection*)(event.data));
+				HttpConnections.erase(*(TcpConnection*)(event.data));
 				delete event.data;
 			}
 		}
@@ -244,50 +240,12 @@ private:
 	int port;
 	TcpServer tcpServer;
 	Tcp2HttpAdapter adapter;
-	std::map<Connection, HttpConnection> HttpConnections;
+	std::map<TcpConnection, HttpConnection> HttpConnections;
 	std::map<std::string, HttpHandler> HttpHandlers;
 	std::string str404;
 	HttpUrlLevel urlHandlesTree;
-	//std::deque<std::pair<Connection, CharStream>> workDeque;
+	//std::deque<std::pair<TcpConnection, CharStream>> workDeque;
 	std::vector<std::string> splitUrl(const std::string &url) const;
-	/*bool addUrl(const std::string &url, HttpHandler handler)
-	{
-		if (HttpHandlers.find(url) != HttpHandlers.end())
-		{
-			return false;
-		}
-		else
-		{
-			HttpHandlers[url] = handler;
-		}
-	}
-	HttpHandler getUrlHandler(const std::string &url)
-	{
-		if (HttpHandlers.find(url) == HttpHandlers.end())
-		{
-			return HttpHandler();
-		}
-		else
-		{
-			return HttpHandlers[url];
-		}
-	}*/
-	std::string generateResponse(int statusCode, const std::string &body)
-	{
-		time_t nowTime = time(NULL);
-		struct tm tmTemp;
-		const struct tm *toParse = gmtime_r(&nowTime, &tmTemp);
-		char timebuf[40];
-		assert(strftime(timebuf, 40, "Date: %a, %d %b %G %T %Z", toParse) != 0);
-		std::string response("HTTP/1.1 200 OK\r\n"
-			"Server: zhangke/0.1\r\n");
-		response.append(timebuf);
-		response.append("\r\nContent-Type: text/html\r\nContent-length: ");
-		response.append(std::to_string(body.size()));
-		response.append("\r\nConnection:close\r\n\r\n");
-		response.append(body);
-		return response;
-	}
 	bool addUrlHandlerToTree(const std::string &url, HttpHandler handler)
 	{
 		auto levelUrlResult = splitUrl(url);
@@ -316,24 +274,6 @@ private:
 		{
 			return false;
 		}
-		/*while (levelUrlResult[i] != "" && i < levelUrlResult.size())
-		{
-			if (urlTreeNode->nextLevel.find(levelUrlResult[i]) == urlTreeNode->nextLevel.end())
-			{
-				urlTreeNode->nextLevel.insert(std::make_pair(levelUrlResult[i], HttpUrlLevel()));
-			}
-			urlTreeNode = &(urlTreeNode->nextLevel[levelUrlResult[i]]);
-			++i;
-		}
-		if (urlTreeNode->handler.type == HttpHandlerType::IllegalHandler)
-		{
-			urlTreeNode->handler = handler;
-			return true;
-		}
-		else
-		{
-			return false;
-		}*/
 	}
 	// 如果是AutoDirSearchHandler，第二个返回值是文件名
 	std::pair<HttpHandler, std::string> findUrlHandler(const std::string &url)

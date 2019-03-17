@@ -80,28 +80,28 @@ public:
 		}
 	}
 
-	void addConnectionWriteEvent(const Connection *conn)
+	void addConnectionWriteEvent(const TcpConnection *conn)
 	{
 		tcpServer.notifyChangeEpoll({ {conn->fd, EpollChangeOperation::ADD_WRITE} });
 	}
 
-	void addConnectionCloseEvent(const Connection *conn)
+	void addConnectionCloseEvent(const TcpConnection *conn)
 	{
 		tcpServer.notifyChangeEpoll({ {conn->fd, EpollChangeOperation::CLOSE_IF_NO_WRITE} });
 	}
 
-	void addConnectionWrite(const Connection *conn, const WriteMeta *toWrite)
+	void addConnectionWrite(const TcpConnection *conn, const WriteMeta *toWrite)
 	{
 		tcpServer.notifyCanWrite(conn->fd, *toWrite);
 	}
 
-	void addConnectionShutdownEvent(const Connection *conn)
+	void addConnectionShutdownEvent(const TcpConnection *conn)
 	{
 		tcpServer.notifyChangeEpoll({ {conn->fd, EpollChangeOperation::CLOSE_IT} });
 	}
-	static OnConnectOperation onConnectHandler(const Connection *, void *);
-	static void onReadHandler(const Connection *, const char *, size_t, void *);
-	static void onPeerShutdownHandler(const Connection *, void *);
+	static OnConnectOperation onConnectHandler(const TcpConnection *, void *);
+	static void onReadHandler(const TcpConnection *, const char *, size_t, void *);
+	static void onPeerShutdownHandler(const TcpConnection *, void *);
 private:
 	TcpServer &tcpServer;
 	std::deque<HttpEvent> events;

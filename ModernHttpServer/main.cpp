@@ -9,9 +9,6 @@ int main()
 {
 	HttpServer httpServer("0.0.0.0", 80);
 
-/*	httpServer.setAddress("0.0.0.0");
-	httpServer.setPort(80)*/;
-
 	httpServer.addUrlHandler("/", test);
 	httpServer.addUrlHandler("/IP/", retIP);
 	httpServer.addUrlRetStaticStr("/hello/", "hello world");
