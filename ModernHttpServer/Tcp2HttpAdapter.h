@@ -19,6 +19,7 @@ public:
 		tcpServer.onConnect(onConnectHandler);
 		tcpServer.onNewData(onReadHandler);
 		tcpServer.onShutdown(onPeerShutdownHandler);
+		tcpServer.onCanWrite(onCanWriteHandler);
 	}
 	~Tcp2HttpAdapter()
 	{
@@ -102,6 +103,7 @@ public:
 	static OnConnectOperation onConnectHandler(const TcpConnection *, void *);
 	static void onReadHandler(const TcpConnection *, const char *, size_t, void *);
 	static void onPeerShutdownHandler(const TcpConnection *, void *);
+	static void onCanWriteHandler(const TcpConnection *, void *);
 private:
 	TcpServer &tcpServer;
 	std::deque<HttpEvent> events;

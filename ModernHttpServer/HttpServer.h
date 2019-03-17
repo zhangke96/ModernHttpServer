@@ -18,6 +18,7 @@ typedef std::string(*urlHandler_t)(void *); // todo 补充函数参数
 #include "HttpConnection.h"
 #include "TcpServer/TcpServer/log.h"
 #include "HttpResponseGenerator.h"
+#include <memory>
 
 struct HttpInfo
 {
@@ -145,6 +146,7 @@ public:
 					else if (state == HttpConnectionState::Http_Connection_ReceiveAll)
 					{
 						// 可以开始处理了
+						bool ifCloseThisLoopEnd = true;	// 标记这个连接在这次处理之后是否关闭
 						std::string url = HttpConnections[newTcpData.connection].getUrl();
 						auto handlerFilename = findUrlHandler(url);
 						HttpHandler handler = handlerFilename.first;
@@ -213,15 +215,33 @@ public:
 								WriteMeta toWrite = string2WriteMeta(responseGenerator.getResponseHead());
 								adapter.addConnectionWrite(&newTcpData.connection, &toWrite);
 								char buffer[4096];
-								ssize_t length = stream.read(buffer, 4096);
+								ssize_t length = stream.read(buffer, 4095);
 								buffer[length] = '\0';
-								WriteMeta toWrite2 = string2WriteMeta(responseGenerator.getResponseBody(buffer, true));
-								adapter.addConnectionWrite(&newTcpData.connection, &toWrite2);
+								WriteMeta *toWrite2 = nullptr;
+								if (stream.end())
+								{
+									toWrite2 = new WriteMeta(string2WriteMeta(responseGenerator.getResponseBody(buffer, true)));
+								}
+								else
+								{
+									toWrite2 = new WriteMeta(string2WriteMeta(responseGenerator.getResponseBody(buffer, false)));
+									// 还要添加到未完成队列中
+									if (workDeque.find(newTcpData.connection) == workDeque.cend())
+									{
+										workDeque[newTcpData.connection] = {std::shared_ptr<HttpResponseGenerator>(new HttpResponseGenerator(responseGenerator)), std::shared_ptr<CharStream>(new FileStream(stream))};
+									}
+									ifCloseThisLoopEnd = false;
+								}
+								adapter.addConnectionWrite(&newTcpData.connection, toWrite2);
+								delete toWrite2;
 							}
 						}
 						adapter.addConnectionWriteEvent(&newTcpData.connection);
-						adapter.addConnectionCloseEvent(&newTcpData.connection);
-						HttpConnections.erase(newTcpData.connection);
+						if (ifCloseThisLoopEnd)
+						{
+							adapter.addConnectionCloseEvent(&newTcpData.connection);
+							HttpConnections.erase(newTcpData.connection);
+						}
 					}
 				}
 				delete[] newTcpData.data;
@@ -230,7 +250,36 @@ public:
 			else if (event.event == HttpEventType::PeerShutdown)
 			{
 				HttpConnections.erase(*(TcpConnection*)(event.data));
+				// 还有一些数据需要删除
 				delete event.data;
+			}
+			else if (event.event == HttpEventType::CanWrite)
+			{
+				Connection canWriteConnection = *(Connection*)(event.data);
+				if (workDeque.find(canWriteConnection) != workDeque.cend())
+				{
+					auto &temp = workDeque[canWriteConnection];
+					char buffer[4096];
+					ssize_t length = temp.second->read(buffer, 4095);
+					if (length >= 0)
+					{
+						buffer[length] = '\0';
+					}
+					WriteMeta *toWrite = nullptr;
+					if (temp.second->end())
+					{
+						toWrite = new WriteMeta(string2WriteMeta(temp.first->getResponseBody(buffer, true)));
+						adapter.addConnectionCloseEvent(&canWriteConnection);
+						HttpConnections.erase(canWriteConnection);
+						workDeque.erase(canWriteConnection);
+					}
+					else
+					{
+						toWrite = new WriteMeta(string2WriteMeta(temp.first->getResponseBody(buffer, false)));
+					}
+					adapter.addConnectionWrite(&canWriteConnection, toWrite);
+					// 这里需要delete
+				}
 			}
 		}
 	}
@@ -244,7 +293,7 @@ private:
 	std::map<std::string, HttpHandler> HttpHandlers;
 	std::string str404;
 	HttpUrlLevel urlHandlesTree;
-	//std::deque<std::pair<TcpConnection, CharStream>> workDeque;
+	std::map<Connection, std::pair<std::shared_ptr<HttpResponseGenerator>, std::shared_ptr<CharStream>>> workDeque;
 	std::vector<std::string> splitUrl(const std::string &url) const;
 	bool addUrlHandlerToTree(const std::string &url, HttpHandler handler)
 	{

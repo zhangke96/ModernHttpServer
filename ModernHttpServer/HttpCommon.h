@@ -5,7 +5,8 @@ enum class HttpEventType : int8_t
 	NoEvent,	// ÎÞÐ§µÄEvent
 	NewConnection,
 	NewData,
-	PeerShutdown
+	PeerShutdown,
+	CanWrite
 };
 struct TcpData
 {

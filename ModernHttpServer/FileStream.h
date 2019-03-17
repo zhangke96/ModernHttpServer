@@ -1,20 +1,22 @@
 #pragma once
 #include "TcpServer/TcpServer/tool.h"
+#include "TcpServer/TcpServer/log.h"
+#include "TcpServer/TcpServer/aux_class.h"
 #include <fcntl.h>
+#include <sys/stat.h>
 // 后期改用mmap，实现零拷贝
 class FileStream :
 	public CharStream
 {
 public:
 	FileStream(const std::string &dir, std::string filename) : dir(dir), filename(filename), 
-		dirfd(-1), fd(-1), specificErrorCode(FileStreamError::NoError)
+		specificErrorCode(FileStreamError::NoError)
 	{
 		initialize();
 	}
-	~FileStream();
 	bool ifError() const
 	{
-		return fd == -1;
+		return fd.getfd() == -1;
 	}
 	enum class FileStreamError
 	{
@@ -28,11 +30,15 @@ public:
 		return specificErrorCode;
 	}
 	ssize_t read(char *, size_t size) override;
+	bool end() const override
+	{
+		return fd.endOfFile();
+	}
 private:
 	std::string dir;
 	std::string filename;
-	int dirfd;
-	int fd;
+	fdwrap dirfd;
+	fdwrap fd;
 	void initialize();
 	FileStreamError specificErrorCode;
 };
