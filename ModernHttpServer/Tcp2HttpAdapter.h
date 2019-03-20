@@ -81,10 +81,10 @@ public:
 		}
 	}
 
-	void addConnectionWriteEvent(const TcpConnection *conn)
+	/*void addConnectionWriteEvent(const TcpConnection *conn)
 	{
 		tcpServer.notifyChangeEpoll({ {conn->fd, EpollChangeOperation::ADD_WRITE} });
-	}
+	}*/
 
 	void addConnectionCloseEvent(const TcpConnection *conn)
 	{
@@ -94,6 +94,11 @@ public:
 	void addConnectionWrite(const TcpConnection *conn, const WriteMeta *toWrite)
 	{
 		tcpServer.notifyCanWrite(conn->fd, *toWrite);
+	}
+
+	void addConnectionWrite(const TcpConnection *conn, const std::vector<WriteMeta> &toWrite)
+	{
+		tcpServer.notifyCanWrite(conn->fd, toWrite);
 	}
 
 	void addConnectionShutdownEvent(const TcpConnection *conn)

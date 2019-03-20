@@ -2,6 +2,7 @@
 #include <map>
 #include <string>
 #include "TcpServer/TcpServer/log.h"
+#include "TcpServer/TcpServer/TcpServer.h"
 
 class HttpResponseGenerator
 {
@@ -48,7 +49,7 @@ public:
 			generateConnAlive() +
 			"\r\n";
 	}
-	std::string getResponseBody(const std::string &frame, bool ifEnd = false);	// ifEnd 用于chunked 方式
+	std::vector<WriteMeta> getResponseBody(std::shared_ptr<char> frame, int length, bool ifEnd = false);	// ifEnd 用于chunked 方式
 
 private:
 	static const std::map<std::string, std::string> mineMap;

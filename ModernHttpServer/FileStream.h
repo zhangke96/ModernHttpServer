@@ -34,6 +34,10 @@ public:
 	{
 		return fd.endOfFile();
 	}
+	int getLength() const
+	{
+		return fd.getLength();
+	}
 private:
 	std::string dir;
 	std::string filename;

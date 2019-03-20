@@ -44,7 +44,7 @@ std::string HttpResponseGenerator::getMineStr(const std::string fileSuffix)
 	if (auto index(mineMap.cend()); (index = mineMap.find(fileSuffix)) == mineMap.cend())
 	{
 		Log(logger, Logger::LOG_WARN, "not found mine type: " + fileSuffix);
-		return "text/html";
+		return "application/octet-stream";
 	}
 	else
 	{
@@ -106,26 +106,28 @@ std::string HttpResponseGenerator::generateContentType() const
 {
 	return "Content-Type: " + getMineStr(mime) + "\r\n";
 }
-std::string HttpResponseGenerator::getResponseBody(const std::string &frame, bool ifEnd)
+std::vector<WriteMeta> HttpResponseGenerator::getResponseBody(std::shared_ptr<char> frame, int length, bool ifEnd)
 {
+	std::vector<WriteMeta> toWrites;
 	if (!isChunked)
 	{
-		return frame;
+		toWrites.push_back(WriteMeta(frame, length));
+		return toWrites;
 	}
 	else
 	{
-		char sizebuf[15];
-		snprintf(sizebuf, 14, "%x\r\n", frame.size());
+		char *sizebuf = new char[15];
+		int headLengthLen = snprintf(sizebuf, 14, "%x\r\n", length);
+		toWrites.push_back(WriteMeta(std::shared_ptr<char>(sizebuf, [](char *p) {delete[] p; }), headLengthLen));
+		toWrites.push_back(WriteMeta(frame, length));
 		if (!ifEnd)
 		{
-			return sizebuf + frame + "\r\n";
+			toWrites.push_back(string2WriteMeta("\r\n"));
 		}
 		else
 		{
-			std::string temp(sizebuf + frame + "\r\n0\r\n\r\n");
-			std::cout << temp << std::endl;
-			std::cout << temp.size() << std::endl;
-			return temp;
+			toWrites.push_back(string2WriteMeta("\r\n0\r\n\r\n"));
 		}
+		return toWrites;
 	}
 }

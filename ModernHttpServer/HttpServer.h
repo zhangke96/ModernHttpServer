@@ -159,8 +159,11 @@ public:
 							responseGenerator.setLengthInd(str404.length());
 							WriteMeta toWrite = string2WriteMeta(responseGenerator.getResponseHead());
 							adapter.addConnectionWrite(&newTcpData.connection, &toWrite);
-							WriteMeta toWrite2 = string2WriteMeta(responseGenerator.getResponseBody(str404));
-							adapter.addConnectionWrite(&newTcpData.connection, &toWrite2);
+							char *notFoundStr = new char[str404.size()];
+							memcpy(notFoundStr, str404.c_str(), str404.size());
+							std::shared_ptr<char> notFoundFrame(notFoundStr, [](char *p) {delete[] p; });
+							std::vector<WriteMeta> toWrite2 = responseGenerator.getResponseBody(notFoundFrame, str404.size());
+							adapter.addConnectionWrite(&newTcpData.connection, toWrite2);
 						}
 						else if (handler.type == HttpHandlerType::NormalHandler)
 						{
@@ -176,8 +179,11 @@ public:
 							responseGenerator.setLengthInd(0, true);
 							WriteMeta toWrite = string2WriteMeta(responseGenerator.getResponseHead());
 							adapter.addConnectionWrite(&newTcpData.connection, &toWrite);
-							WriteMeta toWrite2 = string2WriteMeta(responseGenerator.getResponseBody(result, true));
-							adapter.addConnectionWrite(&newTcpData.connection, &toWrite2);
+							char *resultStr = new char[result.size()];
+							memcpy(resultStr, result.c_str(), result.size());
+							std::shared_ptr<char> resultFrame(resultStr, [](char *p) {delete[] p; });
+							std::vector<WriteMeta> toWrite2 = responseGenerator.getResponseBody(resultFrame, result.size());
+							adapter.addConnectionWrite(&newTcpData.connection, toWrite2);
 						}
 						else if (handler.type == HttpHandlerType::AutoDirSearchHandler)
 						{
@@ -211,32 +217,44 @@ public:
 							else
 							{
 								HttpResponseGenerator responseGenerator;
-								responseGenerator.setLengthInd(0, true);
-								WriteMeta toWrite = string2WriteMeta(responseGenerator.getResponseHead());
-								adapter.addConnectionWrite(&newTcpData.connection, &toWrite);
-								char buffer[4096];
-								ssize_t length = stream.read(buffer, 4095);
-								buffer[length] = '\0';
-								WriteMeta *toWrite2 = nullptr;
-								if (stream.end())
+								//responseGenerator.setLengthInd(0, true);
+								// 使用长度测试一下
+								responseGenerator.setLengthInd(stream.getLength());
+								auto fileName = handlerFilename.second;
+								std::string::size_type position = fileName.find_last_of('.');
+								if (position == std::string::npos)
 								{
-									toWrite2 = new WriteMeta(string2WriteMeta(responseGenerator.getResponseBody(buffer, true)));
+									responseGenerator.setMime(fileName);
 								}
 								else
 								{
-									toWrite2 = new WriteMeta(string2WriteMeta(responseGenerator.getResponseBody(buffer, false)));
+									responseGenerator.setMime(std::string(fileName, fileName.find_last_of('.')));
+								}
+								WriteMeta toWrite = string2WriteMeta(responseGenerator.getResponseHead());
+								adapter.addConnectionWrite(&newTcpData.connection, &toWrite);
+								char *buffer = new char[4096];
+								ssize_t length = stream.read(buffer, 4096);
+								std::shared_ptr<char> frame(buffer, [](char *p) {delete[] p; });
+								std::vector<WriteMeta> toWrite2;
+								if (stream.end())
+								{
+									toWrite2 = responseGenerator.getResponseBody(frame, length, true);
+								}
+								else
+								{
+									toWrite2 = responseGenerator.getResponseBody(frame, length, false);
 									// 还要添加到未完成队列中
 									if (workDeque.find(newTcpData.connection) == workDeque.cend())
 									{
 										workDeque[newTcpData.connection] = {std::shared_ptr<HttpResponseGenerator>(new HttpResponseGenerator(responseGenerator)), std::shared_ptr<CharStream>(new FileStream(stream))};
+										writeLength[newTcpData.connection] = length;
 									}
 									ifCloseThisLoopEnd = false;
 								}
 								adapter.addConnectionWrite(&newTcpData.connection, toWrite2);
-								delete toWrite2;
 							}
 						}
-						adapter.addConnectionWriteEvent(&newTcpData.connection);
+						//adapter.addConnectionWriteEvent(&newTcpData.connection);
 						if (ifCloseThisLoopEnd)
 						{
 							adapter.addConnectionCloseEvent(&newTcpData.connection);
@@ -251,31 +269,34 @@ public:
 			{
 				HttpConnections.erase(*(TcpConnection*)(event.data));
 				// 还有一些数据需要删除
+				workDeque.erase(*(TcpConnection*)event.data);
 				delete event.data;
 			}
 			else if (event.event == HttpEventType::CanWrite)
 			{
-				Connection canWriteConnection = *(Connection*)(event.data);
+				TcpConnection canWriteConnection = *(TcpConnection*)(event.data);
 				if (workDeque.find(canWriteConnection) != workDeque.cend())
 				{
 					auto &temp = workDeque[canWriteConnection];
-					char buffer[4096];
-					ssize_t length = temp.second->read(buffer, 4095);
+					char *buffer = new char[4096];
+					ssize_t length = temp.second->read(buffer, 4096);
+					std::shared_ptr<char> frame(buffer, [](char *p) {delete[] p; });
 					if (length >= 0)
 					{
-						buffer[length] = '\0';
+						writeLength[canWriteConnection] += length;
 					}
-					WriteMeta *toWrite = nullptr;
+					std::vector<WriteMeta> toWrite;
 					if (temp.second->end())
 					{
-						toWrite = new WriteMeta(string2WriteMeta(temp.first->getResponseBody(buffer, true)));
+						toWrite = temp.first->getResponseBody(frame, length, true);
 						adapter.addConnectionCloseEvent(&canWriteConnection);
 						HttpConnections.erase(canWriteConnection);
 						workDeque.erase(canWriteConnection);
+						std::cout << "write Length:" << writeLength[canWriteConnection] << std::endl;
 					}
 					else
 					{
-						toWrite = new WriteMeta(string2WriteMeta(temp.first->getResponseBody(buffer, false)));
+						toWrite = temp.first->getResponseBody(frame, length, false);
 					}
 					adapter.addConnectionWrite(&canWriteConnection, toWrite);
 					// 这里需要delete
@@ -293,7 +314,8 @@ private:
 	std::map<std::string, HttpHandler> HttpHandlers;
 	std::string str404;
 	HttpUrlLevel urlHandlesTree;
-	std::map<Connection, std::pair<std::shared_ptr<HttpResponseGenerator>, std::shared_ptr<CharStream>>> workDeque;
+	std::map<TcpConnection, std::pair<std::shared_ptr<HttpResponseGenerator>, std::shared_ptr<CharStream>>> workDeque;
+	std::map<TcpConnection, int> writeLength;
 	std::vector<std::string> splitUrl(const std::string &url) const;
 	bool addUrlHandlerToTree(const std::string &url, HttpHandler handler)
 	{
