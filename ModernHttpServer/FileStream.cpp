@@ -2,8 +2,8 @@
 
 void FileStream::initialize()
 {
-	int dirfd = open(dir.c_str(), O_RDONLY);
-	if (dirfd == -1)
+	dirfd.reset(open(dir.c_str(), O_RDONLY));
+	if (dirfd.getfd() == -1)
 	{
 		if (errno == ENONET)
 		{
@@ -20,7 +20,8 @@ void FileStream::initialize()
 		fd.reset(-1);
 		return;
 	}
-	fd.reset(openat(dirfd, filename.c_str(), O_RDONLY));
+
+	fd.reset(openat(dirfd.getfd(), filename.c_str(), O_RDONLY));
 	if (fd.getfd() == -1)
 	{
 		if (errno == ENONET)

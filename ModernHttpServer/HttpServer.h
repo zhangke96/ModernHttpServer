@@ -160,6 +160,7 @@ public:
 							WriteMeta toWrite = string2WriteMeta(responseGenerator.getResponseHead());
 							adapter.addConnectionWrite(&newTcpData.connection, &toWrite);
 							char *notFoundStr = new char[str404.size()];
+							assert(notFoundStr);
 							memcpy(notFoundStr, str404.c_str(), str404.size());
 							std::shared_ptr<char> notFoundFrame(notFoundStr, [](char *p) {delete[] p; });
 							std::vector<WriteMeta> toWrite2 = responseGenerator.getResponseBody(notFoundFrame, str404.size());
@@ -180,9 +181,10 @@ public:
 							WriteMeta toWrite = string2WriteMeta(responseGenerator.getResponseHead());
 							adapter.addConnectionWrite(&newTcpData.connection, &toWrite);
 							char *resultStr = new char[result.size()];
+							assert(resultStr);
 							memcpy(resultStr, result.c_str(), result.size());
 							std::shared_ptr<char> resultFrame(resultStr, [](char *p) {delete[] p; });
-							std::vector<WriteMeta> toWrite2 = responseGenerator.getResponseBody(resultFrame, result.size());
+							std::vector<WriteMeta> toWrite2 = responseGenerator.getResponseBody(resultFrame, result.size(), true);
 							adapter.addConnectionWrite(&newTcpData.connection, toWrite2);
 						}
 						else if (handler.type == HttpHandlerType::AutoDirSearchHandler)
@@ -233,6 +235,7 @@ public:
 								WriteMeta toWrite = string2WriteMeta(responseGenerator.getResponseHead());
 								adapter.addConnectionWrite(&newTcpData.connection, &toWrite);
 								char *buffer = new char[4096];
+								assert(buffer);
 								ssize_t length = stream.read(buffer, 4096);
 								std::shared_ptr<char> frame(buffer, [](char *p) {delete[] p; });
 								std::vector<WriteMeta> toWrite2;
@@ -275,10 +278,12 @@ public:
 			else if (event.event == HttpEventType::CanWrite)
 			{
 				TcpConnection canWriteConnection = *(TcpConnection*)(event.data);
+				delete event.data;
 				if (workDeque.find(canWriteConnection) != workDeque.cend())
 				{
 					auto &temp = workDeque[canWriteConnection];
 					char *buffer = new char[4096];
+					assert(buffer);
 					ssize_t length = temp.second->read(buffer, 4096);
 					std::shared_ptr<char> frame(buffer, [](char *p) {delete[] p; });
 					if (length >= 0)

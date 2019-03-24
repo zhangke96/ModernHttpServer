@@ -117,6 +117,7 @@ std::vector<WriteMeta> HttpResponseGenerator::getResponseBody(std::shared_ptr<ch
 	else
 	{
 		char *sizebuf = new char[15];
+		assert(sizebuf);
 		int headLengthLen = snprintf(sizebuf, 14, "%x\r\n", length);
 		toWrites.push_back(WriteMeta(std::shared_ptr<char>(sizebuf, [](char *p) {delete[] p; }), headLengthLen));
 		toWrites.push_back(WriteMeta(frame, length));
